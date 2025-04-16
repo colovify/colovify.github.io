@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>조차 관측소 지도 시각화</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { margin: 0; font-family: 'Segoe UI', sans-serif; }
+        #map { height: 100vh; width: 100%; }
+        .legend { background: white; padding: 10px; position: absolute; bottom: 30px; left: 10px; z-index: 999; font-size: 12px; line-height: 1.4em; border-radius: 5px; box-shadow: 0 0 5px rgba(0,0,0,0.3); max-height: 80vh; overflow-y: auto; }
+        .legend div { display: flex; align-items: center; margin-bottom: 4px; }
+        .legend span { display: inline-block; width: 16px; height: 16px; margin-right: 8px; }
+        #chartContainer {
+            position: fixed; /* 화면 중앙 고정 */
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%); /* 중앙 정렬 */
+            z-index: 1000;
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            padding: 20px;
+            display: none;
+            opacity: 0; /* 초기 투명도 0 */
+            transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out; /* 부드러운 애니메이션 */
+        }
+        #chartContainer.show {
+            display: block;
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1); /* 나타날 때 약간 커지는 효과 */
+        }
+        #tidalChart {
+            width: 80vw; /* 넓게 설정 */
+            max-width: 800px;
+            height: 60vh; /* 높게 설정 */
+            max-height: 600px;
+        }
+        #toggleChartButton { position: absolute; top: 20px; right: 20px; z-index: 9999; padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 25px; font-size: 16px; cursor: pointer; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); transition: all 0.3s ease; }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div class="legend" id="legend"></div>
+    <button id="toggleChartButton">차트 보기</button>
+    <div id="chartContainer">
+        <canvas id="tidalChart"></canvas>
+    </div>
+
+    <script>
+        const observationData = [
+        { name: "가덕도", meanTidalRange: 139.9354839, lat: 35.024178, lon: 128.810933 },
+{ name: "강화대교", meanTidalRange: 539, lat: 37.731944, lon: 126.522222 },
+{ name: "거문도", meanTidalRange: 96.64516129, lat: 34.028333, lon: 127.308889 },
+{ name: "거제도", meanTidalRange: 134.1612903, lat: 34.801389, lon: 128.699167 },
+{ name: "소무의도", meanTidalRange: 667.3, lat: 37.373069, lon: 126.440066 },
+{ name: "고흥발포", meanTidalRange: 283.0967742, lat: 34.481111, lon: 127.342778 },
+{ name: "덕적도", meanTidalRange: 602.2903226, lat: 37.226333, lon: 126.156556 },
+{ name: "동해항", meanTidalRange: 34.93548387, lat: 37.494722, lon: 129.143889 },
+{ name: "마산", meanTidalRange: 161.7096774, lat: 35.1975, lon: 128.576389 },
+{ name: "묵호", meanTidalRange: 45.25808065, lat: 37.550278, lon: 129.116389 },
+{ name: "보령", meanTidalRange: 561.3548387, lat: 36.406389, lon: 126.486111 },
+{ name: "여의도", meanTidalRange: 364.9043252, lat: 37.829381, lon: 125.103583 },
+{ name: "부산", meanTidalRange: 107.6451613, lat: 35.096389, lon: 129.035278 },
+{ name: "부산항신항", meanTidalRange: 110.5451111, lat: 35.0795, lon: 128.9383 },
+{ name: "삼천포", meanTidalRange: 350, lat: 34.9339, lon: 128.0786 },
+{ name: "서귀포", meanTidalRange: 216.2580645, lat: 33.24, lon: 126.561667 },
+{ name: "속초", meanTidalRange: 35.06451613, lat: 38.207222, lon: 128.594167 },
+{ name: "안산", meanTidalRange: 663.2258065, lat: 37.192222, lon: 126.647222 },
+{ name: "안흥", meanTidalRange: 500.4333333, lat: 36.6746388888889, lon: 126.129555555556 },
+{ name: "어청도", meanTidalRange: 445, lat: 36.117222, lon: 125.984722 },
+{ name: "여수", meanTidalRange: 236.7333333, lat: 34.747222, lon: 127.765556 },
+{ name: "여호항", meanTidalRange: 268.8666667, lat: 34.661944, lon: 127.469167 },
+{ name: "영광", meanTidalRange: 484.8333333, lat: 35.426111, lon: 126.420556 },
+{ name: "영종대교", meanTidalRange: 347.6, lat: 37.545556, lon: 126.584444 },
+{ name: "영흥도", meanTidalRange: 625.5333333, lat: 37.2386111111111, lon: 126.428611111111 },
+{ name: "완도", meanTidalRange: 266.9333333, lat: 34.315556, lon: 126.759722 },
+{ name: "울릉도", meanTidalRange: 21.23333333, lat: 37.491389, lon: 130.913611 },
+{ name: "울산", meanTidalRange: 45.53333333, lat: 35.501944, lon: 129.387222 },
+{ name: "위도", meanTidalRange: 470.6333333, lat: 35.6180844444444, lon: 126.301815833333 },
+{ name: "인천", meanTidalRange: 673.1, lat: 37.451944, lon: 126.592222 },
+{ name: "인천송도", meanTidalRange: 656.6333333, lat: 37.3380555555556, lon: 126.586111111111 },
+{ name: "장항", meanTidalRange: 531.5666667, lat: 36.006944, lon: 126.6875 },
+{ name: "제주", meanTidalRange: 181.9, lat: 33.5275, lon: 126.543056 },
+{ name: "추자도", meanTidalRange: 241.3225806, lat: 33.961944, lon: 126.300278 },
+{ name: "태안", meanTidalRange: 550.2, lat: 36.9130555555556, lon: 126.238888888889 },
+{ name: "통영", meanTidalRange: 189.3, lat: 34.827778, lon: 128.434722 },
+{ name: "평택", meanTidalRange: 695.0967742, lat: 36.966944, lon: 126.822778 },
+{ name: "포항", meanTidalRange: 25.93333333, lat: 36.047128, lon: 129.383806 },
+{ name: "향화도", meanTidalRange: 479.2, lat: 35.167667, lon: 126.359556 },
+{ name: "후포", meanTidalRange: 26.2, lat: 36.6775, lon: 129.453056 },
+{ name: "서거차도(조차X)", meanTidalRange: 0, lat: 34.25142222, lon: 125.915449999 },
+{ name: "흑산도", meanTidalRange: 288.4193548, lat: 34.684167, lon: 125.435556 }
+        ];
+
+        const map = L.map("map", { center: [36.5, 127.5], zoom: 7, maxBounds: [[33.0, 124.5], [39.5, 131.0]], maxBoundsViscosity: 1.0 });
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap contributors" }).addTo(map);
+
+        const colorRanges = [
+            { max: 25, color: '#edf8fb' }, { max: 50, color: '#ccece6' }, { max: 100, color: '#99d8c9' },
+            { max: 150, color: '#66c2a4' }, { max: 200, color: '#41ae76' }, { max: 250, color: '#238b45' },
+            { max: 300, color: '#006d2c' }, { max: 350, color: '#00441b' }, { max: 400, color: '#fed976' },
+            { max: 450, color: '#feb24c' }, { max: 500, color: '#fd8d3c' }, { max: 550, color: '#fc4e2a' },
+            { max: 600, color: '#e31a1c' }, { max: 650, color: '#bd0026' }, { max: Infinity, color: '#800026' }
+        ];
+
+        function getColor(rangeCm) {
+            for (const r of colorRanges) { if (rangeCm <= r.max) return r.color; }
+            return colorRanges[colorRanges.length - 1].color;
+        }
+
+        function getRadius(rangeCm) { return 4 + (rangeCm / 100); }
+
+        observationData.forEach(station => {
+            const color = getColor(station.meanTidalRange);
+            const radius = getRadius(station.meanTidalRange);
+            const marker = L.circleMarker([station.lat, station.lon], { radius, fillColor: color, color: "#000", weight: 1, opacity: 1, fillOpacity: 0.8 }).addTo(map);
+            marker.bindPopup(`<b>${station.name}</b><br>3월 평균 조차: ${station.meanTidalRange.toFixed(1)} cm<br>위도: ${station.lat.toFixed(6)}<br>경도: ${station.lon.toFixed(6)}`);
+        });
+
+        const legend = document.getElementById('legend');
+        let prev = 0;
+        colorRanges.forEach(r => {
+            const label = r.max === Infinity ? `${prev}+ cm` : `${prev}–${r.max} cm`;
+            legend.innerHTML += `<div><span style="background:${r.color}"></span>${label}</div>`;
+            prev = r.max === Infinity ? prev : r.max;
+        });
+
+        // Chart
+        const toggleChartButton = document.getElementById("toggleChartButton");
+        const chartContainer = document.getElementById("chartContainer");
+        const ctx = document.getElementById("tidalChart").getContext("2d");
+        let tidalChart;
+
+        function updateChart() {
+            const stationNames = observationData.map(station => station.name);
+            const tidalRanges = observationData.map(station => station.meanTidalRange);
+
+            if (tidalChart) {
+                tidalChart.data.labels = stationNames;
+                tidalChart.data.datasets[0].data = tidalRanges;
+                tidalChart.update();
+            } else {
+                tidalChart = new Chart(ctx, {
+                    type: "bar",
+                    data: {
+                        labels: stationNames,
+                        datasets: [{
+                            label: "월평균 조차 (cm)",
+                            data: tidalRanges,
+                            backgroundColor: "rgba(75, 192, 192, 0.6)",
+                            borderColor: "rgba(75, 192, 192, 1)",
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                title: { display: true, text: '관측소' },
+                                ticks: {
+                                    autoSkip: false, // 모든 레이블 표시
+                                    maxRotation: 90, // 필요에 따라 회전
+                                    minRotation: 90
+                                }
+                            },
+                            y: { beginAtZero: true, title: { display: true, text: '월평균 조차 (cm)' } }
+                        },
+                        plugins: {
+                            legend: { display: false } // 범례 숨김
+                        }
+                    }
+                });
+            }
+        }
+
+        toggleChartButton.addEventListener("click", () => {
+            chartContainer.classList.toggle('show');
+            if (chartContainer.classList.contains('show')) {
+                updateChart();
+            }
+        });
+    </script>
+</body>
+</html>
